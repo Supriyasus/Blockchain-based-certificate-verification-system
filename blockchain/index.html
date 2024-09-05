@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Verification System</title>
+    <script src="https://unpkg.com/web3@latest/dist/web3.min.js"></script> 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Certificate Verification System</h1>
+
+    <!-- Issue Certificate Section -->
+    <h2>Issue Certificate</h2>
+    <input type="text" id="name" placeholder="Name">
+    <input type="text" id="course" placeholder="Course">
+    <input type="text" id="dateIssued" placeholder="Date Issued">
+    <button id="issueButton">Issue Certificate</button>
+
+    <!-- Verify Certificate Section -->
+    <h2>Verify Certificate</h2>
+    <input type="text" id="transactionHash" placeholder="Enter Transaction Hash">
+    <button id="verifyButton">Verify Certificate</button>
+    <div id="verificationResult"></div>
+    <div id="dateIssuedResult"></div>
+
+    <script>
+        let web3;
+        let contract;
+        const contractAddress = '0x545192dEc1b98a19D87BB67f5b6696CAA1C538bF'; // Replace with your deployed contract address
+    
+        // Load ABI from JSON file (if needed for additional verification, but not required in this case)
+        async function loadABI() {
+            try {
+                const response = await fetch('contractABI.json'); // Ensure the file path is correct
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch ABI: ${response.status} ${response.statusText}`);
+                }
+                const abi = await response.json();
+                return abi;
+            } catch (error) {
+                console.error('Error fetching ABI:', error);
+            }
+        }
+    
+        window.onload = async () => {
+            if (window.ethereum) {
+                web3 = new Web3(window.ethereum);
+                await window.ethereum.request({ method: 'eth_requestAccounts' });
+
+                const abi = await loadABI();
+                if (abi) {
+                    contract = new web3.eth.Contract(abi, contractAddress);
+                } else {
+                    console.error('Failed to load ABI. Cannot proceed without it.');
+                }
+            }
+            
+            // Add event listeners for buttons
+            document.getElementById('issueButton').addEventListener('click', issueCertificate);
+            document.getElementById('verifyButton').addEventListener('click', verifyCertificate);
+        };
+
+        // Function to issue a certificate
+        async function issueCertificate() {
+            const name = document.getElementById('name').value;
+            const course = document.getElementById('course').value;
+            const dateIssued = document.getElementById('dateIssued').value;
+    
+            try {
+                const accounts = await web3.eth.getAccounts();
+                const result = await contract.methods.issueCertificate(name, course, dateIssued).send({ from: accounts[0] });
+                alert(`Certificate issued successfully! Transaction Hash: ${result.transactionHash}`);
+            } catch (error) {
+                console.error("Error issuing certificate:", error);
+                alert('Failed to issue certificate. Check console for details.');
+            }
+        }
+
+        // Function to fetch block details from Etherscan API using transaction hash
+        async function getBlockDetailsFromEtherscan(transactionHash) {
+            const etherscanApiKey = "IMVG9ZA8T5H5M2V31J4NYGA1RRRR7KX1QH"; // Replace with your Etherscan API key
+            const url = `https://api-sepolia.etherscan.io/api?module=proxy&action=eth_getTransactionByHash&txhash=${transactionHash}&apikey=${etherscanApiKey}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.result) {
+                    const blockNumber = data.result.blockNumber;
+
+                    // Fetch block details using block number
+                    const blockUrl = `https://api-sepolia.etherscan.io/api?module=proxy&action=eth_getBlockByNumber&tag=${blockNumber}&boolean=true&apikey=${etherscanApiKey}`;
+                    const blockResponse = await fetch(blockUrl);
+                    const blockData = await blockResponse.json();
+
+                    if (blockData.result) {
+                        return blockData.result;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching block details from Etherscan:', error);
+            }
+        }
+
+        // Function to verify a certificate by transaction hash
+        async function verifyCertificate() {
+            const transactionHash = document.getElementById('transactionHash').value;
+    
+            try {
+                // Fetch block details from Etherscan API
+                const blockDetails = await getBlockDetailsFromEtherscan(transactionHash);
+
+                if (blockDetails) {
+                    const blockTimestamp = parseInt(blockDetails.timestamp, 16) * 1000; // Convert hex to decimal and then to milliseconds
+                    const dateIssued = new Date(blockTimestamp).toLocaleString(); // Convert timestamp to readable date
+
+                    // Display the date issued
+                    document.getElementById('dateIssuedResult').innerText = `Date Issued: ${dateIssued}`;
+                }
+            } catch (error) {
+                console.error("Error verifying certificate:", error);
+                alert('Failed to verify certificate. Check console for details.');
+            }
+        }
+    </script>
+</body>
+</html>
